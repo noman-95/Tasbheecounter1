@@ -106,7 +106,10 @@ class OfflineAsrService {
 
     try {
       final request = http.Request('GET', Uri.parse(_modelUrl));
-      final response = await client.send(request);
+      final response = await client.send(request).timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => throw TimeoutException('Quran AI model download timed out.'),
+      );
 
       if (response.statusCode != 200) {
         throw HttpException(

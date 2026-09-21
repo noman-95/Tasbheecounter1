@@ -43,6 +43,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
   bool _usingOfflineAsr = false;
   bool _modelPreparing = false;
   double _modelProgress = 0;
+  bool _usingOnlineSpeech = false;
+  String _onlineSpeechText = '';
 
   String _spokenText = '';
   String _message = 'Mic dabayein aur poori ayat parhein.';
@@ -241,6 +243,72 @@ class _RecitationScreenState extends State<RecitationScreen> {
     }
   }
 
+  Future<String?> _bestArabicLocale() async {
+    try {
+      final locales = await _speech.locales();
+      const preferred = <String>['ar-SA', 'ar-AE', 'ar-EG', 'ar'];
+      for (final wanted in preferred) {
+        for (final locale in locales) {
+          if (locale.localeId.toLowerCase() == wanted.toLowerCase()) {
+            return locale.localeId;
+          }
+        }
+      }
+      final arabic = locales.where(
+        (locale) => locale.localeId.toLowerCase().startsWith('ar'),
+      );
+      if (arabic.isNotEmpty) return arabic.first.localeId;
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> _startOnlineSpeech() async {
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if ((status == 'done' || status == 'notListening') &&
+            _isListening &&
+            _usingOnlineSpeech &&
+            !_finishing) {
+          _finishListening();
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+        if (_isListening && _usingOnlineSpeech) {
+          setState(() {
+            _message = 'Online voice recognition ruk gayi. Dobara parhein.';
+          });
+        }
+      },
+    );
+
+    if (!available) return false;
+
+    final localeId = await _bestArabicLocale();
+    if (localeId == null) return false;
+
+    _usingOnlineSpeech = true;
+    _onlineSpeechText = '';
+    _spokenText = '';
+
+    await _speech.listen(
+      localeId: localeId,
+      partialResults: true,
+      listenFor: const Duration(seconds: 60),
+      pauseFor: const Duration(seconds: 5),
+      cancelOnError: false,
+      onResult: (result) {
+        if (!mounted) return;
+        setState(() {
+          _onlineSpeechText = result.recognizedWords.trim();
+          _spokenText = _onlineSpeechText;
+        });
+      },
+    );
+
+    return true;
+  }
+
   Future<void> _startListening() async {
     final ayah = _currentAyah;
     if (ayah == null || _isListening || _finishing) return;
@@ -250,9 +318,31 @@ class _RecitationScreenState extends State<RecitationScreen> {
 
     _sessionToken = DateTime.now().microsecondsSinceEpoch;
     _savedSessionToken = null;
+    _usingOfflineAsr = false;
+    _usingOnlineSpeech = false;
+    _onlineSpeechText = '';
+    _spokenText = '';
 
-    // Android/iOS: prefer the local Quran Whisper/Sherpa engine.
-    // Web/desktop keeps speech_to_text as a development fallback.
+    // Prefer the phone's online speech recognizer first. This gives immediate
+    // feedback after recording and does not require a 150 MB model download.
+    try {
+      final onlineStarted = await _startOnlineSpeech();
+      if (onlineStarted) {
+        if (!mounted) return;
+        setState(() {
+          _isListening = true;
+          _isEvaluated = false;
+          _results = const [];
+          _message = 'Online AI Listening... poori ayat mukammal parhein.';
+        });
+        return;
+      }
+    } catch (_) {
+      _usingOnlineSpeech = false;
+    }
+
+    // If the phone has no online speech service, use the Quran-optimized
+    // offline Whisper model as the fallback.
     if (!kIsWeb) {
       try {
         var ready = await OfflineAsrService.isModelReady();
@@ -261,11 +351,13 @@ class _RecitationScreenState extends State<RecitationScreen> {
             setState(() {
               _modelPreparing = true;
               _modelProgress = 0;
-              _message = 'AI Quran voice engine prepare ho raha hai...';
+              _message = 'Offline Quran AI prepare ho raha hai...';
             });
           }
           await OfflineAsrService.downloadModel(onProgress: (value) {
-            if (mounted) setState(() => _modelProgress = value.clamp(0.0, 1.0));
+            if (mounted) {
+              setState(() => _modelProgress = value.clamp(0.0, 1.0));
+            }
           });
           ready = await OfflineAsrService.isModelReady();
         }
@@ -280,56 +372,25 @@ class _RecitationScreenState extends State<RecitationScreen> {
           _isEvaluated = false;
           _spokenText = '';
           _results = const [];
-          _message = 'AI Listening... poori ayat mukammal parhein.';
+          _message = 'Offline AI Listening... poori ayat mukammal parhein.';
         });
         return;
       } catch (e) {
         if (mounted) {
           setState(() {
             _modelPreparing = false;
-            _message = 'AI voice engine start nahi hua. Fallback recognition use ho rahi hai.';
+            _message = 'Voice recognition start nahi hui: $e';
           });
         }
       }
     }
 
-    final available = await _speech.initialize(
-      onStatus: (status) {
-        if ((status == 'done' || status == 'notListening') && _isListening && !_finishing) {
-          _finishListening();
-        }
-      },
-      onError: (_) {
-        if (!mounted) return;
-        setState(() {
-          _isListening = false;
-          _message = 'Mic mein error aaya. Dobara try karein.';
-        });
-      },
-    );
-
-    if (!available) {
-      if (mounted) setState(() => _message = 'Microphone/speech recognition available nahi hai.');
-      return;
+    if (mounted) {
+      setState(() {
+        _isListening = false;
+        _message = 'Arabic speech recognition is device par available nahi hai.';
+      });
     }
-
-    setState(() {
-      _usingOfflineAsr = false;
-      _isListening = true;
-      _isEvaluated = false;
-      _spokenText = '';
-      _results = const [];
-      _message = 'Listening... poori ayat mukammal parhein.';
-    });
-
-    await _speech.listen(
-      localeId: 'ar_SA',
-      partialResults: true,
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() => _spokenText = result.recognizedWords);
-      },
-    );
   }
 
   Future<void> _finishListening() async {
@@ -338,27 +399,48 @@ class _RecitationScreenState extends State<RecitationScreen> {
     if (mounted) {
       setState(() {
         _isListening = false;
-        _message = 'Recitation complete — audio analysis ho rahi hai...';
+        _message = 'Recitation complete — text analysis ho rahi hai...';
       });
     }
 
     try {
-      if (_usingOfflineAsr) {
-        final recognized = await OfflineAsrService.stopAndRecognize();
-        if (mounted) setState(() => _spokenText = recognized.trim());
+      if (_usingOnlineSpeech) {
+        await _speech.stop();
+        _spokenText = _onlineSpeechText.trim();
+      } else if (_usingOfflineAsr) {
+        final recognized = await OfflineAsrService.stopAndRecognize()
+            .timeout(const Duration(seconds: 45));
+        _spokenText = recognized.trim();
       } else {
         await _speech.stop();
       }
 
-      if (_spokenText.trim().isEmpty) {
-        if (mounted) setState(() => _message = 'Koi speech recognize nahi hui. Dobara poori ayat parhein.');
+      final text = _spokenText.trim();
+      if (text.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _message =
+                'Koi Arabic speech recognize nahi hui. Mic permission aur internet check karke dobara parhein.';
+          });
+        }
         return;
       }
 
+      if (mounted) setState(() => _spokenText = text);
       await _evaluateCurrentAyah();
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _message =
+              'AI analysis mein zyada waqt lag raha hai. Dobara chhoti ayat ke saath try karein.';
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() => _message = 'Voice analysis mein error: $e');
+      if (mounted) {
+        setState(() => _message = 'Voice analysis mein error: $e');
+      }
     } finally {
+      _usingOnlineSpeech = false;
       _usingOfflineAsr = false;
       _finishing = false;
     }
