@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +14,10 @@ class StorageService {
   static const String zikrCountsKey = 'zikrCounts';
   static const String todayDateKey = 'todayDate';
   static const String todayCountsKey = 'todayCounts';
+  static const String quranProgressKey = 'quranProgress';
+  static const String quranHistoryKey = 'quranHistory';
+  static const String lastQuranSurahKey = 'lastQuranSurah';
+  static const String quranScriptKey = 'quranScript';
 
   static Future<void> saveCount(int count) async {
     final prefs = await SharedPreferences.getInstance();
@@ -274,6 +278,132 @@ class StorageService {
     }
 
     return result;
+  }
+
+
+  // ---------------- Quran Progress ----------------
+
+  static Future<Map<String, int>> getQuranProgressMap() async {
+    return _getMap(quranProgressKey);
+  }
+
+  static Future<int> getQuranProgress(int surahNumber) async {
+    final progress = await _getMap(quranProgressKey);
+    return progress['$surahNumber'] ?? 0;
+  }
+
+  static Future<void> saveQuranProgress(
+    int surahNumber,
+    int lastCompletedAyah,
+  ) async {
+    final progress = await _getMap(quranProgressKey);
+    progress['$surahNumber'] = lastCompletedAyah;
+    await _saveMap(quranProgressKey, progress);
+  }
+
+  static Future<void> clearQuranProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(quranProgressKey);
+  }
+
+  static Future<void> saveLastQuranSurah(int surahNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(lastQuranSurahKey, surahNumber);
+  }
+
+  static Future<int?> getLastQuranSurah() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(lastQuranSurahKey);
+  }
+
+  static Future<void> saveQuranScript(String script) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(quranScriptKey, script);
+  }
+
+  static Future<String> getQuranScript() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(quranScriptKey) ?? 'Uthmani';
+  }
+
+  // ---------------- Quran Recitation History ----------------
+  // One latest result is kept for each Surah + Ayah. A new attempt
+  // updates that record instead of creating duplicates.
+
+  static Future<void> saveOrUpdateQuranHistory({
+    required int surahNumber,
+    required String surahName,
+    required int ayahNumber,
+    required int correctWords,
+    required int wrongWords,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(quranHistoryKey) ?? [];
+    final records = <Map<String, dynamic>>[];
+
+    for (final item in saved) {
+      try {
+        final decoded = jsonDecode(item);
+        if (decoded is Map) {
+          records.add(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {}
+    }
+
+    final record = <String, dynamic>{
+      'surahNumber': surahNumber,
+      'surahName': surahName,
+      'ayahNumber': ayahNumber,
+      'correctWords': correctWords,
+      'wrongWords': wrongWords,
+      'totalWords': correctWords + wrongWords,
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+
+    final existingIndex = records.indexWhere(
+      (item) =>
+          item['surahNumber'].toString() == surahNumber.toString() &&
+          item['ayahNumber'].toString() == ayahNumber.toString(),
+    );
+
+    if (existingIndex >= 0) {
+      records[existingIndex] = record;
+    } else {
+      records.add(record);
+    }
+
+    await prefs.setStringList(
+      quranHistoryKey,
+      records.map(jsonEncode).toList(),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getQuranHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(quranHistoryKey) ?? [];
+    final result = <Map<String, dynamic>>[];
+
+    for (final item in saved) {
+      try {
+        final decoded = jsonDecode(item);
+        if (decoded is Map) {
+          result.add(Map<String, dynamic>.from(decoded));
+        }
+      } catch (_) {}
+    }
+
+    result.sort((a, b) {
+      final aDate = DateTime.tryParse(a['updatedAt']?.toString() ?? '') ?? DateTime(2000);
+      final bDate = DateTime.tryParse(b['updatedAt']?.toString() ?? '') ?? DateTime(2000);
+      return bDate.compareTo(aDate);
+    });
+
+    return result;
+  }
+
+  static Future<void> clearQuranHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(quranHistoryKey);
   }
 
   static Future<void> clearHistory() async {

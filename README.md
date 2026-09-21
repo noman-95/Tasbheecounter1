@@ -1,17 +1,39 @@
-# tasbheecounter
+# Tasbheecounter
 
-A new Flutter project.
+The existing Zikr/Tasbih screens and storage are kept from the previous working project.
 
-## Getting Started
+Added Quran features:
+- Quran Learning screen with 114 Surahs.
+- Arabic Quran text from the bundled Tanzil SQL asset.
+- Urdu translation from the bundled Urdu JSON asset.
+- Ayah-by-ayah Quran reading screen.
+- AI Recitation Check using the microphone.
+- Recitation is evaluated after the whole ayah/session ends, not word-by-word during live speaking.
+- Correct words are shown in green and wrong words in red.
+- Left button = Next; right button = Previous.
 
-This project is a starting point for a Flutter application.
+Before running:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter clean
+flutter pub get
+flutter run -d chrome
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+For Android release:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter build apk --release
+```
+
+Offline Quran Audio:
+- Surah screen has an "Offline Surah Audio" download button.
+- Recitation screen has "Sunain" and "Offline Save" controls.
+- Audio is downloaded per ayah and stored inside the app; downloaded ayahs can then be played without internet.
+- The first download requires internet.
+- Recite & Check remains separate: playing the Qari audio is optional, and feedback still runs after the full ayah is recited.
+- Chrome/web can stream the reference audio but cannot use the local offline download cache.
+
+Important offline note:
+- Offline Qari audio is supported after the ayah/surah audio has been downloaded once.
+- The current `speech_to_text` feedback engine uses the device speech-recognition service, so its ability to work with no internet depends on the installed Arabic speech service/language pack. The app does not claim guaranteed fully-offline AI speech grading yet.

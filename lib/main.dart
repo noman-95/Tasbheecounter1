@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+
 import 'screens/home_screen.dart';
 import 'services/storage_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Quran data is loaded by the Quran screens.
+  // Do not block app startup on a Quran asset error.
   runApp(const TasbihApp());
 }
 
@@ -58,16 +63,13 @@ class _TasbihAppState extends State<TasbihApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Tasbih Counter',
-
       themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
-
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF087F5B),
         ),
       ),
-
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -76,7 +78,6 @@ class _TasbihAppState extends State<TasbihApp> {
           brightness: Brightness.dark,
         ),
       ),
-
       home: HomeScreen(
         onThemeChanged: changeTheme,
         isDarkMode: darkMode,
@@ -84,8 +85,3 @@ class _TasbihAppState extends State<TasbihApp> {
     );
   }
 }
-
-
-
-
-

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:vibration/vibration.dart';
 
+import 'quran_screen.dart';
 import '../data/zikr_data.dart';
 import '../models/zikr_model.dart';
 import '../services/storage_service.dart';
@@ -30,13 +31,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int totalCount = 0;
 
   bool isLoading = true;
+  bool _isProcessingCount = false;
 
-  final List<int> targetOptions = [
-    33,
-    99,
-    100,
-    1000,
-  ];
+  final List<int> targetOptions = [33, 99, 100, 1000];
 
   static const Color primaryGreen = Color(0xFF087F5B);
   static const Color lightGreen = Color(0xFFE8F5E9);
@@ -62,15 +59,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    final savedCount = await StorageService.getZikrCount(
-      savedZikr.id,
-    );
+    final savedCount =
+        await StorageService.getZikrCount(savedZikr.id);
 
-    final savedToday = await StorageService.getTodayZikrCount(
-      savedZikr.id,
-    );
+    final savedToday =
+        await StorageService.getTodayZikrCount(savedZikr.id);
 
-    final savedTotal = await StorageService.getTotal();
+    final savedTotal =
+        await StorageService.getTotal();
 
     if (!mounted) return;
 
@@ -84,12 +80,38 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _reloadCountingData() async {
+    final savedCount =
+        await StorageService.getZikrCount(selectedZikr.id);
+
+    final savedToday =
+        await StorageService.getTodayZikrCount(selectedZikr.id);
+
+    final savedTotal =
+        await StorageService.getTotal();
+
+    if (!mounted) return;
+
+    setState(() {
+      count = savedCount;
+      todayCount = savedToday;
+      totalCount = savedTotal;
+    });
+  }
+
   Future<void> _incrementCount() async {
-    if (count >= selectedTarget) {
+    if (_isProcessingCount || count >= selectedTarget) {
       return;
     }
 
-    final vibrationEnabled =
+    if (mounted) {
+      setState(() => _isProcessingCount = true);
+    } else {
+      _isProcessingCount = true;
+    }
+
+    try {
+      final vibrationEnabled =
         await StorageService.getVibration();
 
     if (vibrationEnabled) {
@@ -155,7 +177,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+  } finally {
+    if (mounted) {
+      setState(() => _isProcessingCount = false);
+    } else {
+      _isProcessingCount = false;
+    }
   }
+}
 
   Future<void> _resetCount() async {
     await StorageService.resetZikrCount(
@@ -232,9 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                );
+                Navigator.pop(dialogContext);
                 controller.dispose();
               },
               child: const Text(
@@ -243,9 +270,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final value = int.tryParse(
-                  controller.text,
-                );
+                final value =
+                    int.tryParse(controller.text);
 
                 if (value == null || value <= 0) {
                   return;
@@ -260,9 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
 
                 if (dialogContext.mounted) {
-                  Navigator.pop(
-                    dialogContext,
-                  );
+                  Navigator.pop(dialogContext);
                 }
 
                 controller.dispose();
@@ -288,19 +312,119 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    await _loadData();
+    await _reloadCountingData();
   }
 
-  Future<void> _openHistory() async {
-    await Navigator.push(
+  void _openHistory() {
+    Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) =>
-            const HistoryScreen(),
+        builder: (context) => const HistoryScreen(),
       ),
     );
+  }
 
-    await _loadData();
+  void _openQuran() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const QuranScreen(),
+      ),
+    );
+  }
+
+  Widget _buildQuranCard(bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openQuran,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isDark
+                  ? const [
+                      Color(0xFF164B3B),
+                      Color(0xFF0F3027),
+                    ]
+                  : const [
+                      Color(0xFF0B8F68),
+                      Color(0xFF087F5B),
+                    ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: primaryGreen.withOpacity(
+                  isDark ? 0.18 : 0.22,
+                ),
+                blurRadius: 16,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
+              ),
+              const SizedBox(width: 15),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Quran Learning',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Listen, read & practice Quran',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -317,12 +441,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final progress = selectedTarget == 0
         ? 0.0
-        : (count / selectedTarget)
-            .clamp(0.0, 1.0);
+        : (count / selectedTarget).clamp(0.0, 1.0);
 
     final isDark =
         Theme.of(context).brightness ==
-            Brightness.dark;
+        Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -364,6 +487,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Column(
             children: [
+              // ==============================
+              // QURAN LEARNING CARD
+              // ==============================
+              _buildQuranCard(isDark),
+
+              const SizedBox(height: 22),
+
+              // ==============================
+              // ZIKR CARD
+              // ==============================
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(
@@ -379,9 +512,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   borderRadius:
                       BorderRadius.circular(22),
                   border: Border.all(
-                    color: primaryGreen.withOpacity(
-                      0.15,
-                    ),
+                    color:
+                        primaryGreen.withOpacity(0.15),
                   ),
                 ),
                 child: Column(
@@ -395,13 +527,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(
                       selectedZikr.arabic,
                       textAlign: TextAlign.center,
-                      textDirection:
-                          TextDirection.rtl,
+                      textDirection: TextDirection.rtl,
                       style: TextStyle(
                         fontSize: 31,
                         height: 1.7,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         color: isDark
                             ? Colors.white
                             : primaryGreen,
@@ -417,12 +547,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: isDark
-                            ? Colors.black.withOpacity(
-                                0.18,
-                              )
-                            : Colors.white.withOpacity(
-                                0.75,
-                              ),
+                            ? Colors.black.withOpacity(0.18)
+                            : Colors.white.withOpacity(0.75),
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -442,8 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(height: 3),
                           Text(
                             selectedZikr.translation,
-                            textAlign:
-                                TextAlign.center,
+                            textAlign: TextAlign.center,
                             textDirection:
                                 TextDirection.rtl,
                             style: TextStyle(
@@ -464,8 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       selectedZikr.name,
                       style: TextStyle(
                         fontSize: 15,
-                        fontWeight:
-                            FontWeight.w600,
+                        fontWeight: FontWeight.w600,
                         color: isDark
                             ? Colors.white70
                             : Colors.black54,
@@ -474,7 +598,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+
               const SizedBox(height: 22),
+
+              // ==============================
+              // COUNTER
+              // ==============================
               Container(
                 width: double.infinity,
                 padding:
@@ -482,8 +611,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   vertical: 20,
                 ),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .cardColor,
+                  color:
+                      Theme.of(context).cardColor,
                   borderRadius:
                       BorderRadius.circular(22),
                   boxShadow: [
@@ -492,8 +621,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         isDark ? 0.15 : 0.06,
                       ),
                       blurRadius: 15,
-                      offset:
-                          const Offset(0, 5),
+                      offset: const Offset(0, 5),
                     ),
                   ],
                 ),
@@ -503,8 +631,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       'TARGET  •  $selectedTarget',
                       style: const TextStyle(
                         fontSize: 14,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         color: primaryGreen,
                         letterSpacing: 1,
                       ),
@@ -537,8 +664,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontSize: 62,
                                 fontWeight:
                                     FontWeight.bold,
-                                color:
-                                    primaryGreen,
+                                color: primaryGreen,
                               ),
                             ),
                             Text(
@@ -559,13 +685,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 20),
                     GestureDetector(
-                      onTap: _incrementCount,
+                      onTap: _isProcessingCount ? null : _incrementCount,
                       child: Container(
                         width: 125,
                         height: 125,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: primaryGreen,
+                          color: _isProcessingCount ? Colors.grey : primaryGreen,
                           boxShadow: [
                             BoxShadow(
                               color: primaryGreen
@@ -581,8 +707,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons
-                                    .touch_app_rounded,
+                                Icons.touch_app_rounded,
                                 color: Colors.white,
                                 size: 29,
                               ),
@@ -605,7 +730,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+
               const SizedBox(height: 20),
+
               DropdownButtonFormField<ZikrModel>(
                 value: selectedZikr,
                 decoration: InputDecoration(
@@ -622,26 +749,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   fillColor:
                       Theme.of(context).cardColor,
                 ),
-                items: ZikrData.allZikr.map(
-                  (zikr) {
-                    return DropdownMenuItem<
-                        ZikrModel>(
-                      value: zikr,
-                      child: Text(
-                        zikr.name,
-                        overflow:
-                            TextOverflow.ellipsis,
-                      ),
-                    );
-                  },
-                ).toList(),
+                items: ZikrData.allZikr.map((zikr) {
+                  return DropdownMenuItem<ZikrModel>(
+                    value: zikr,
+                    child: Text(
+                      zikr.name,
+                      overflow:
+                          TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
                 onChanged: (value) {
                   if (value != null) {
                     _changeZikr(value);
                   }
                 },
               ),
+
               const SizedBox(height: 13),
+
               DropdownButtonFormField<String>(
                 value: targetOptions.contains(
                   selectedTarget,
@@ -676,7 +802,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
                 onChanged: (value) {
-                  if (value == null) return;
+                  if (value == null) {
+                    return;
+                  }
 
                   if (value == 'Custom') {
                     _customTargetDialog();
@@ -687,7 +815,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 },
               ),
+
               const SizedBox(height: 14),
+
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -700,14 +830,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Reset Current Count',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   style:
                       OutlinedButton.styleFrom(
-                    foregroundColor:
-                        primaryGreen,
+                    foregroundColor: primaryGreen,
                     side: const BorderSide(
                       color: primaryGreen,
                       width: 1.4,
@@ -720,7 +848,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 18),
+
               Container(
                 width: double.infinity,
                 padding:
@@ -729,8 +859,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   horizontal: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .cardColor,
+                  color:
+                      Theme.of(context).cardColor,
                   borderRadius:
                       BorderRadius.circular(18),
                 ),
@@ -747,23 +877,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     Container(
                       height: 45,
                       width: 1,
-                      color:
-                          Colors.grey.withOpacity(
-                        0.3,
-                      ),
+                      color: Colors.grey
+                          .withOpacity(0.3),
                     ),
                     _statItem(
-                      icon: Icons.today_rounded,
+                      icon:
+                          Icons.today_rounded,
                       title: 'Today',
                       value: '$todayCount',
                     ),
                     Container(
                       height: 45,
                       width: 1,
-                      color:
-                          Colors.grey.withOpacity(
-                        0.3,
-                      ),
+                      color: Colors.grey
+                          .withOpacity(0.3),
                     ),
                     _statItem(
                       icon:

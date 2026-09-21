@@ -10,15 +10,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
+  http: ^1.6.0
+  archive: ^4.3.0
+  record: ^6.2.0
+  sherpa_onnx: ^1.13.8
   vibration: ^3.2.1
+  speech_to_text: ^7.5.0
+  just_audio: ^0.10.6
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
@@ -27,6 +32,21 @@ flutter:
 
   assets:
     - assets/icon/app_icon.png.png
+    - assets/quran/quran.sql
+    - assets/quran/ur.json
+    - assets/quran/text/
+    - assets/quran/fonts/
+    - assets/quran/audio/
+    - assets/translations/
+    - assets/qaida/
+
+  fonts:
+    - family: UthmanicHafs
+      fonts:
+        - asset: assets/quran/fonts/UthmanicHafs1Ver18.ttf
+    - family: IndoPak
+      fonts:
+        - asset: assets/quran/fonts/indopak.ttf
 
 flutter_launcher_icons:
   android: true

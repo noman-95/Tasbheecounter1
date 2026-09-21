@@ -1,0 +1,25 @@
+{
+  "surahs": [
+    {
+      "number": 1,
+      "nameArabic": "الفاتحة",
+      "nameEnglish": "The Opening",
+      "transliteration": "Al-Fatihah",
+      "ayahCount": 7,
+      "ayahs": [
+        {
+          "number": 1,
+          "arabic": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+          "english": "In the name of Allah, the Most Gracious, the Most Merciful.",
+          "urdu": "اللہ کے نام سے جو نہایت مہربان، بے حد رحم والا ہے۔"
+        },
+        {
+          "number": 2,
+          "arabic": "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ",
+          "english": "All praise is due to Allah, Lord of the worlds.",
+          "urdu": "سب تعریفیں اللہ ہی کے لیے ہیں جو تمام جہانوں کا پالنے والا ہے۔"
+        }
+      ]
+    }
+  ]
+}
