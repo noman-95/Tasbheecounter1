@@ -36,9 +36,7 @@ flutter:
     - assets/quran/ur.json
     - assets/quran/text/
     - assets/quran/fonts/
-    - assets/quran/audio/
     - assets/translations/
-    - assets/qaida/
 
   fonts:
     - family: UthmanicHafs
