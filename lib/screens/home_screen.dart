@@ -478,22 +478,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Most phones have a short viewport. Use a compact, fixed layout
-            // there so the main screen fits without requiring a scroll.
-            if (constraints.maxHeight < 760) {
-              return _buildCompactHome(isDark, constraints.maxHeight);
-            }
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                18,
-                16,
-                25,
-              ),
-              child: Column(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            18,
+            16,
+            25,
+          ),
+          child: Column(
             children: [
               // ==============================
               // QURAN LEARNING CARD
@@ -910,182 +902,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
-              ),
-            );
-          },
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildCompactHome(bool isDark, double height) {
-    final progress = selectedTarget == 0
-        ? 0.0
-        : (count / selectedTarget).clamp(0.0, 1.0);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: Column(
-        children: [
-          _buildQuranCard(isDark),
-          const SizedBox(height: 10),
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF18332B) : lightGreen,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    selectedZikr.arabic,
-                    textAlign: TextAlign.center,
-                    textDirection: TextDirection.rtl,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: height < 680 ? 23 : 26,
-                      height: 1.45,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    selectedZikr.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '$count / $selectedTarget',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: primaryGreen,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  SizedBox(
-                    height: 7,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: isDark ? Colors.white12 : Colors.white,
-                        color: primaryGreen,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: _isProcessingCount ? null : _incrementCount,
-                    child: Container(
-                      width: height < 680 ? 82 : 92,
-                      height: height < 680 ? 82 : 92,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _isProcessingCount ? Colors.grey : primaryGreen,
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'TAP',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<ZikrModel>(
-                  value: selectedZikr,
-                  isDense: true,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.menu_book_rounded, color: primaryGreen),
-                    labelText: 'Zikr',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
-                  ),
-                  items: ZikrData.allZikr.map((zikr) {
-                    return DropdownMenuItem<ZikrModel>(
-                      value: zikr,
-                      child: Text(zikr.name, overflow: TextOverflow.ellipsis),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) _changeZikr(value);
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: targetOptions.contains(selectedTarget)
-                      ? selectedTarget.toString()
-                      : 'Custom',
-                  isDense: true,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.flag_rounded, color: primaryGreen),
-                    labelText: 'Target',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: Theme.of(context).cardColor,
-                  ),
-                  items: [
-                    ...targetOptions.map((target) => DropdownMenuItem<String>(
-                      value: target.toString(),
-                      child: Text('$target'),
-                    )),
-                    const DropdownMenuItem<String>(
-                      value: 'Custom',
-                      child: Text('Custom'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    if (value == 'Custom') {
-                      _customTargetDialog();
-                    } else {
-                      _changeTarget(int.parse(value));
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _statItem(icon: Icons.touch_app_rounded, title: 'Current', value: '$count'),
-              _statItem(icon: Icons.today_rounded, title: 'Today', value: '$todayCount'),
-              _statItem(icon: Icons.all_inclusive_rounded, title: 'Total', value: '$totalCount'),
-              IconButton(
-                onPressed: _resetCount,
-                tooltip: 'Reset',
-                icon: const Icon(Icons.refresh_rounded, color: primaryGreen),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
