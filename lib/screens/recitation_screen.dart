@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -51,6 +52,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
   String _selectedScript = 'Uthmani';
 
   List<_WordResult> _results = const [];
+  bool _retryMode = false;
+  List<int> _retryWordIndexes = const [];
 
   int _sessionToken = 0;
   int? _savedSessionToken;
@@ -323,6 +326,20 @@ class _RecitationScreenState extends State<RecitationScreen> {
     _onlineSpeechText = '';
     _spokenText = '';
 
+    // After an ayah has been checked, retry only the words that were not
+    // correct. This avoids forcing the user to repeat the whole ayah.
+    final fullWords = _splitWords(ayah.arabic);
+    final retryIndexes = _results.length == fullWords.length
+        ? List<int>.generate(fullWords.length, (i) => i)
+            .where((i) => _results[i].status != _WordStatus.correct)
+            .toList()
+        : <int>[];
+    _retryMode = retryIndexes.isNotEmpty;
+    _retryWordIndexes = List.unmodifiable(retryIndexes);
+    final targetWords = _retryMode
+        ? retryIndexes.map((i) => fullWords[i]).join(' ')
+        : ayah.arabic;
+
     // Prefer the phone's online speech recognizer first. This gives immediate
     // feedback after recording and does not require a 150 MB model download.
     try {
@@ -333,7 +350,9 @@ class _RecitationScreenState extends State<RecitationScreen> {
           _isListening = true;
           _isEvaluated = false;
           _results = const [];
-          _message = 'Online AI Listening... poori ayat mukammal parhein.';
+          _message = _retryMode
+              ? 'Dobara sirf red/orange lafz parhein: $targetWords'
+              : 'Online AI Listening... poori ayat mukammal parhein.';
         });
         return;
       }
@@ -372,7 +391,9 @@ class _RecitationScreenState extends State<RecitationScreen> {
           _isEvaluated = false;
           _spokenText = '';
           _results = const [];
-          _message = 'Offline AI Listening... poori ayat mukammal parhein.';
+          _message = _retryMode
+              ? 'Dobara sirf red/orange lafz parhein: $targetWords'
+              : 'Offline AI Listening... poori ayat mukammal parhein.';
         });
         return;
       } catch (e) {
@@ -455,23 +476,41 @@ class _RecitationScreenState extends State<RecitationScreen> {
 
     final expectedWords = _splitWords(ayah.arabic);
     final spokenWords = _splitWords(_spokenText);
-    final expectedNormalized = expectedWords
+
+    final targetIndexes = _retryMode && _retryWordIndexes.isNotEmpty
+        ? _retryWordIndexes
+        : List<int>.generate(expectedWords.length, (i) => i);
+    final targetWords = targetIndexes.map((i) => expectedWords[i]).toList();
+    final expectedNormalized = targetWords
         .map(_normalizeArabic)
         .toList(growable: false);
     final spokenNormalized = spokenWords
         .map(_normalizeArabic)
         .toList(growable: false);
 
-    final results = _alignWords(
-      expectedWords,
+    final attemptResults = _alignWords(
+      targetWords,
       expectedNormalized,
       spokenNormalized,
+      spokenWords,
     );
+
+    final results = _retryMode && _results.length == expectedWords.length
+        ? List<_WordResult>.from(_results)
+        : expectedWords
+            .map((word) => _WordResult(word, _WordStatus.pending))
+            .toList();
+
+    for (var i = 0; i < targetIndexes.length; i++) {
+      results[targetIndexes[i]] = attemptResults[i];
+    }
 
     final correct = results
         .where((item) => item.status == _WordStatus.correct)
         .length;
-    final wrong = results.length - correct;
+    final wrong = results
+        .where((item) => item.status != _WordStatus.correct)
+        .length;
 
     // Always persist the current attempt. History is upserted by Surah + Ayah,
     // so repeated checks update the current record instead of creating duplicates.
@@ -497,6 +536,12 @@ class _RecitationScreenState extends State<RecitationScreen> {
       ayahNumber: ayah.numberInSurah,
       correctWords: correct,
       wrongWords: wrong,
+      wordStatuses: results
+          .map((item) => {
+                'word': item.word,
+                'status': item.status.name,
+              })
+          .toList(growable: false),
     );
 
     if (!mounted) {
@@ -506,8 +551,11 @@ class _RecitationScreenState extends State<RecitationScreen> {
     setState(() {
       _results = List.unmodifiable(results);
       _isEvaluated = true;
-      _message =
-          'Feedback: $correct sahi, $wrong mein improvement chahiye.';
+      _retryMode = false;
+      _retryWordIndexes = const [];
+      _message = wrong == 0
+          ? 'MashaAllah! Ayat ke tamam lafz sahi hain.'
+          : 'Feedback: $correct sahi, $wrong dobara parhein. Agli dafa sirf red/orange lafz check honge.';
     });
   }
 
@@ -515,6 +563,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
     List<String> expectedWords,
     List<String> expectedNormalized,
     List<String> spokenNormalized,
+    List<String> spokenWords,
   ) {
     final n = expectedNormalized.length;
     final m = spokenNormalized.length;
@@ -580,6 +629,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
     }
 
     final matchedScores = <int, double>{};
+    final matchedSpokenIndexes = <int, int>{};
     var i = n;
     var j = m;
 
@@ -591,6 +641,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
           expectedNormalized[i - 1],
           spokenNormalized[j - 1],
         );
+        matchedSpokenIndexes[i - 1] = j - 1;
         i--;
         j--;
       } else if (operation == _Trace.skipExpected && i > 0) {
@@ -611,14 +662,71 @@ class _RecitationScreenState extends State<RecitationScreen> {
         );
       }
 
-      final status = score >= 0.78
+      var status = score >= 0.78
           ? _WordStatus.correct
           : score >= 0.60
               ? _WordStatus.improve
               : _WordStatus.wrong;
 
+      // Keep the existing robust letter matching, but add a conservative
+      // harakat check when the speech recognizer actually returns diacritics.
+      // Most phone ASR engines omit Arabic diacritics; in that case we do not
+      // invent a red error because the text alone cannot prove a harakat error.
+      final spokenIndex = matchedSpokenIndexes[index];
+      if (status == _WordStatus.correct &&
+          spokenIndex != null &&
+          spokenIndex < spokenWords.length &&
+          _containsArabicHarakat(spokenWords[spokenIndex])) {
+        if (!_sameArabicHarakat(
+          expectedWords[index],
+          spokenWords[spokenIndex],
+        )) {
+          status = _WordStatus.wrong;
+        }
+      }
+
       return _WordResult(expectedWords[index], status);
     });
+  }
+
+  // Arabic tashkeel/recitation marks. These are deliberately checked
+  // separately from _normalizeArabic(), because the latter removes marks
+  // for tolerant letter-level matching.
+  static final RegExp _arabicHarakatRegExp =
+      RegExp(r'[\u064B-\u065F\u0670\u06D6-\u06ED]');
+
+  bool _containsArabicHarakat(String value) {
+    return _arabicHarakatRegExp.hasMatch(value);
+  }
+
+  List<String> _arabicHarakat(String value) {
+    return _arabicHarakatRegExp
+        .allMatches(value)
+        .map((match) => match.group(0)!)
+        .toList(growable: false);
+  }
+
+  bool _sameArabicHarakat(String expected, String spoken) {
+    final expectedMarks = _arabicHarakat(expected);
+    final spokenMarks = _arabicHarakat(spoken);
+
+    // If the recognizer supplies marks, compare them exactly. If it supplies
+    // no marks, this function is never called, avoiding false negatives.
+    if (expectedMarks.isEmpty || spokenMarks.isEmpty) {
+      return true;
+    }
+
+    if (expectedMarks.length != spokenMarks.length) {
+      return false;
+    }
+
+    for (var i = 0; i < expectedMarks.length; i++) {
+      if (expectedMarks[i] != spokenMarks[i]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   List<String> _splitWords(String text) {
@@ -680,6 +788,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
       _isEvaluated = false;
       _spokenText = '';
       _results = const [];
+      _retryMode = false;
+      _retryWordIndexes = const [];
       _message =
           'Mic dabayein aur poori ayat parhein.';
     });

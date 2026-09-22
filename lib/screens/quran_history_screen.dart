@@ -103,22 +103,79 @@ class _QuranHistoryScreenState extends State<QuranHistoryScreen> {
                       final surah = item['surahName']?.toString() ?? '';
                       final surahNumber = item['surahNumber']?.toString() ?? '';
                       final ayah = item['ayahNumber']?.toString() ?? '';
+                      final attempts = int.tryParse(item['attemptCount']?.toString() ?? '') ?? 1;
+                      final rawWords = item['wordStatuses'];
+                      final words = rawWords is List
+                          ? rawWords
+                              .whereType<Map>()
+                              .map((e) => Map<String, dynamic>.from(e))
+                              .toList(growable: false)
+                          : const <Map<String, dynamic>>[];
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
+                        child: ExpansionTile(
                           leading: CircleAvatar(
                             backgroundColor: primaryGreen.withOpacity(0.12),
                             child: const Icon(Icons.menu_book_rounded, color: primaryGreen),
                           ),
                           title: Text('$surah • Ayah $ayah'),
                           subtitle: Text(
-                            'Surah $surahNumber  •  $correct/$total words sahi  •  $wrong ghalat',
+                            'Surah $surahNumber  •  $correct/$total sahi  •  $wrong ghalat  •  $attempts attempt',
                           ),
                           trailing: Icon(
                             wrong == 0 ? Icons.check_circle : Icons.info_outline,
                             color: wrong == 0 ? Colors.green : Colors.orange,
                           ),
+                          children: [
+                            if (words.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Is purani entry mein lafzon ki detail save nahi hui thi.'),
+                                ),
+                              )
+                            else
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: Directionality(
+                                  textDirection: TextDirection.rtl,
+                                  child: Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 6,
+                                    runSpacing: 7,
+                                    children: words.map((word) {
+                                      final status = word['status']?.toString() ?? 'pending';
+                                      final isCorrect = status == 'correct';
+                                      final isImprove = status == 'improve';
+                                      final bg = isCorrect
+                                          ? Colors.green.shade50
+                                          : isImprove
+                                              ? Colors.orange.shade50
+                                              : Colors.red.shade50;
+                                      final fg = isCorrect
+                                          ? Colors.green.shade800
+                                          : isImprove
+                                              ? Colors.orange.shade900
+                                              : Colors.red.shade800;
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: bg,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: fg.withOpacity(0.18)),
+                                        ),
+                                        child: Text(
+                                          word['word']?.toString() ?? '',
+                                          style: TextStyle(fontSize: 20, color: fg, fontWeight: FontWeight.w600),
+                                        ),
+                                      );
+                                    }).toList(growable: false),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       );
                     },

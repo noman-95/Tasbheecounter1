@@ -336,6 +336,7 @@ class StorageService {
     required int ayahNumber,
     required int correctWords,
     required int wrongWords,
+    List<Map<String, dynamic>>? wordStatuses,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList(quranHistoryKey) ?? [];
@@ -350,6 +351,15 @@ class StorageService {
       } catch (_) {}
     }
 
+    final existingIndex = records.indexWhere(
+      (item) =>
+          item['surahNumber'].toString() == surahNumber.toString() &&
+          item['ayahNumber'].toString() == ayahNumber.toString(),
+    );
+    final previousAttempts = existingIndex >= 0
+        ? int.tryParse(records[existingIndex]['attemptCount']?.toString() ?? '') ?? 0
+        : 0;
+
     final record = <String, dynamic>{
       'surahNumber': surahNumber,
       'surahName': surahName,
@@ -357,14 +367,10 @@ class StorageService {
       'correctWords': correctWords,
       'wrongWords': wrongWords,
       'totalWords': correctWords + wrongWords,
+      'wordStatuses': wordStatuses ?? const [],
+      'attemptCount': previousAttempts + 1,
       'updatedAt': DateTime.now().toIso8601String(),
     };
-
-    final existingIndex = records.indexWhere(
-      (item) =>
-          item['surahNumber'].toString() == surahNumber.toString() &&
-          item['ayahNumber'].toString() == ayahNumber.toString(),
-    );
 
     if (existingIndex >= 0) {
       records[existingIndex] = record;
