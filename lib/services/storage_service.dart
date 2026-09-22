@@ -367,7 +367,14 @@ class StorageService {
       'correctWords': correctWords,
       'wrongWords': wrongWords,
       'totalWords': correctWords + wrongWords,
-      'wordStatuses': wordStatuses ?? const [],
+      'wordStatuses': (wordStatuses ?? const [])
+          .asMap()
+          .entries
+          .map((entry) => {
+                ...entry.value,
+                'index': entry.key,
+              })
+          .toList(growable: false),
       'attemptCount': previousAttempts + 1,
       'updatedAt': DateTime.now().toIso8601String(),
     };
@@ -382,6 +389,20 @@ class StorageService {
       quranHistoryKey,
       records.map(jsonEncode).toList(),
     );
+  }
+
+  static Future<Map<String, dynamic>?> getQuranHistoryForAyah({
+    required int surahNumber,
+    required int ayahNumber,
+  }) async {
+    final history = await getQuranHistory();
+    for (final item in history) {
+      if (item['surahNumber']?.toString() == surahNumber.toString() &&
+          item['ayahNumber']?.toString() == ayahNumber.toString()) {
+        return item;
+      }
+    }
+    return null;
   }
 
   static Future<List<Map<String, dynamic>>> getQuranHistory() async {

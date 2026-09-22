@@ -45,6 +45,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
   bool _modelPreparing = false;
   double _modelProgress = 0;
   bool _usingOnlineSpeech = false;
+  bool _acceptingSpeechResults = false;
+  bool _firstDownloadBlocking = false;
   String _onlineSpeechText = '';
 
   String _spokenText = '';
@@ -84,6 +86,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
         .clamp(0, _ayahs.length - 1)
         .toInt();
 
+    await _restoreSavedAyahResult();
     await _refreshAudioState();
   }
 
@@ -105,6 +108,36 @@ class _RecitationScreenState extends State<RecitationScreen> {
     }
 
     return _ayahs[_currentAyahIndex];
+  }
+
+  Future<void> _restoreSavedAyahResult() async {
+    final ayah = _currentAyah;
+    if (ayah == null) return;
+
+    final saved = await StorageService.getQuranHistoryForAyah(
+      surahNumber: widget.selectedSurah.number,
+      ayahNumber: ayah.numberInSurah,
+    );
+    if (!mounted || saved == null) return;
+
+    final raw = saved['wordStatuses'];
+    final restored = raw is List
+        ? raw.whereType<Map>().map((item) {
+            final map = Map<String, dynamic>.from(item);
+            final status = _WordStatus.values.firstWhere(
+              (value) => value.name == map['status']?.toString(),
+              orElse: () => _WordStatus.wrong,
+            );
+            return _WordResult(map['word']?.toString() ?? '', status);
+          }).where((item) => item.word.isNotEmpty).toList()
+        : <_WordResult>[];
+
+    if (restored.isEmpty) return;
+    setState(() {
+      _results = List.unmodifiable(restored);
+      _isEvaluated = true;
+      _message = 'Is ayat ki pichli checking aur word colors restore ho gaye.';
+    });
   }
 
   Future<void> _refreshAudioState() async {
@@ -291,6 +324,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
     if (localeId == null) return false;
 
     _usingOnlineSpeech = true;
+    _acceptingSpeechResults = true;
     _onlineSpeechText = '';
     _spokenText = '';
 
@@ -323,6 +357,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
     _savedSessionToken = null;
     _usingOfflineAsr = false;
     _usingOnlineSpeech = false;
+    _acceptingSpeechResults = false;
     _onlineSpeechText = '';
     _spokenText = '';
 
@@ -381,6 +416,13 @@ class _RecitationScreenState extends State<RecitationScreen> {
           ready = await OfflineAsrService.isModelReady();
         }
         if (!ready) throw StateError('AI voice model is not ready.');
+        if (mounted) {
+          setState(() {
+            _firstDownloadBlocking = false;
+            _modelPreparing = false;
+            _message = 'Quran Voice AI ready hai. Ab recitation shuru karein.';
+          });
+        }
 
         await OfflineAsrService.startRecording();
         if (!mounted) return;
@@ -399,6 +441,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
       } catch (e) {
         if (mounted) {
           setState(() {
+            _firstDownloadBlocking = false;
             _modelPreparing = false;
             _message = 'Voice recognition start nahi hui: $e';
           });
@@ -427,8 +470,10 @@ class _RecitationScreenState extends State<RecitationScreen> {
     try {
       if (_usingOnlineSpeech) {
         await _speech.stop();
+        _acceptingSpeechResults = false;
         _spokenText = _onlineSpeechText.trim();
       } else if (_usingOfflineAsr) {
+        _acceptingSpeechResults = false;
         final recognized = await OfflineAsrService.stopAndRecognize()
             .timeout(const Duration(seconds: 45));
         _spokenText = recognized.trim();
@@ -461,6 +506,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
         setState(() => _message = 'Voice analysis mein error: $e');
       }
     } finally {
+      _acceptingSpeechResults = false;
       _usingOnlineSpeech = false;
       _usingOfflineAsr = false;
       _finishing = false;
@@ -739,15 +785,19 @@ class _RecitationScreenState extends State<RecitationScreen> {
   }
 
   String _normalizeArabic(String value) {
+    // Ignore tashkeel/waqf marks for tolerant letter matching. The marks are
+    // checked separately when the speech engine actually returns them.
     return value
-        .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u06D6-\u06ED]'), '')
+        .replaceAll(_arabicHarakatRegExp, '')
+        .replaceAll(RegExp(r'[\u0610-\u061A]'), '')
         .replaceAll('ـ', '')
         .replaceAll('ٱ', 'ا')
-        .replaceAll(RegExp(r'[أإآ]'), 'ا')
+        .replaceAll(RegExp(r'[أإآٲٳٵٶ]'), 'ا')
         .replaceAll('ؤ', 'و')
         .replaceAll('ئ', 'ي')
         .replaceAll('ى', 'ي')
         .replaceAll('ة', 'ه')
+        .replaceAll('ء', '')
         .replaceAll(RegExp(r'[^\u0621-\u064A]'), '');
   }
 
@@ -783,6 +833,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
       return;
     }
 
+    _acceptingSpeechResults = false;
     setState(() {
       _isListening = false;
       _isEvaluated = false;
@@ -817,6 +868,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
       return;
     }
 
+    _acceptingSpeechResults = false;
     setState(() {
       _currentAyahIndex = next;
 
@@ -833,6 +885,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
       _audioDownloaded = false;
     });
 
+    await _restoreSavedAyahResult();
     await _refreshAudioState();
   }
 
@@ -899,7 +952,9 @@ class _RecitationScreenState extends State<RecitationScreen> {
           const SizedBox(width: 6),
         ],
       ),
-      body: FutureBuilder<void>(
+      body: Stack(
+        children: [
+          FutureBuilder<void>(
         future: _quranFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -1024,6 +1079,70 @@ class _RecitationScreenState extends State<RecitationScreen> {
             ),
           );
         },
+      ),
+          if (_firstDownloadBlocking)
+            Positioned.fill(
+              child: Material(
+                color: Colors.black.withOpacity(0.58),
+                child: Center(
+                  child: Container(
+                    margin: const EdgeInsets.all(28),
+                    padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.download_for_offline_rounded,
+                          color: primaryGreen,
+                          size: 46,
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'Pehli dafa Quran Voice AI download ho raha hai',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF18352C),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Please wait. Download complete hone tak koi aur task nahi chalega.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF65736D),
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        LinearProgressIndicator(
+                          value: _modelProgress > 0 ? _modelProgress : null,
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(8),
+                          color: primaryGreen,
+                          backgroundColor: const Color(0xFFE3ECE8),
+                        ),
+                        const SizedBox(height: 9),
+                        Text(
+                          '${(_modelProgress * 100).round()}%',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: primaryGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
