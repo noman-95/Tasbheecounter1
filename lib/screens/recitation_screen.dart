@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/ayah_model.dart';
 import '../models/surah_model.dart';
 import '../services/quran_service.dart';
 import '../services/quran_audio_service.dart';
 import '../services/storage_service.dart';
-import '../services/offline_asr_service.dart';
+import '../services/qrc_online_service.dart';
 
 class RecitationScreen extends StatefulWidget {
   final SurahModel selectedSurah;
@@ -27,7 +26,6 @@ class RecitationScreen extends StatefulWidget {
 class _RecitationScreenState extends State<RecitationScreen> {
   static const Color primaryGreen = Color(0xFF087F5B);
 
-  late final stt.SpeechToText _speech;
   late final Future<void> _quranFuture;
 
   List<AyahModel> _ayahs = const [];
@@ -41,13 +39,13 @@ class _RecitationScreenState extends State<RecitationScreen> {
   bool _audioBusy = false;
   bool _audioDownloaded = false;
   bool _audioPlaying = false;
-  bool _usingOfflineAsr = false;
-  bool _modelPreparing = false;
-  int? _selectedWordIndex;
-  bool _firstModelDownload = false;
-  double _modelProgress = 0;
-  bool _usingOnlineSpeech = false;
-  String _onlineSpeechText = '';
+  bool _usingOnlineQrc = false;
+  QrcOnlineService? _qrcService;
+  Map<String, dynamic>? _latestQrcResult;
+  Timer? _transcriptUiTimer;
+  String _pendingTranscriptUi = '';
+  Timer? _liveHistoryTimer;
+  int _liveHistoryGeneration = 0;
 
   String _spokenText = '';
   String _message = 'Mic dabayein aur poori ayat parhein.';
@@ -63,8 +61,6 @@ class _RecitationScreenState extends State<RecitationScreen> {
   @override
   void initState() {
     super.initState();
-
-    _speech = stt.SpeechToText();
 
     _quranFuture = _prepare();
   }
@@ -88,12 +84,14 @@ class _RecitationScreenState extends State<RecitationScreen> {
 
     await _refreshAudioState();
     await _restoreSavedAyahFeedback();
+
   }
 
   @override
   void dispose() {
-    _speech.stop();
-    OfflineAsrService.dispose();
+    _transcriptUiTimer?.cancel();
+    _liveHistoryTimer?.cancel();
+    _qrcService?.dispose();
     QuranAudioService.stop();
     super.dispose();
   }
@@ -284,70 +282,148 @@ class _RecitationScreenState extends State<RecitationScreen> {
     }
   }
 
-  Future<String?> _bestArabicLocale() async {
-    try {
-      final locales = await _speech.locales();
-      const preferred = <String>['ar-SA', 'ar-AE', 'ar-EG', 'ar'];
-      for (final wanted in preferred) {
-        for (final locale in locales) {
-          if (locale.localeId.toLowerCase() == wanted.toLowerCase()) {
-            return locale.localeId;
-          }
+  Future<bool> _startOnlineQrc(AyahModel ayah) async {
+    final service = QrcOnlineService();
+    if (!service.configured) return false;
+
+    final started = await service.start(
+      chapterIndex: widget.selectedSurah.number,
+      verseIndex: ayah.numberInSurah,
+      wordIndex: (_retryWordIndexes.isNotEmpty ? _retryWordIndexes.first + 1 : 1),
+      hafzLevel: 1,
+      tajweedLevel: 3,
+    );
+    if (!started) {
+      await service.dispose();
+      return false;
+    }
+
+    _qrcService = service;
+    _usingOnlineQrc = true;
+    _latestQrcResult = null;
+    service.results.listen((result) {
+      if (!mounted || !_usingOnlineQrc) return;
+      final event = result['event']?.toString();
+      if (event == 'TILAWA_RESULT') {
+        _latestQrcResult = result;
+        _applyQrcResult(result, persist: false);
+        final text = result['text']?.toString();
+        if (text != null && text.trim().isNotEmpty) {
+          _spokenText = text.trim();
         }
       }
-      final arabic = locales.where(
-        (locale) => locale.localeId.toLowerCase().startsWith('ar'),
-      );
-      if (arabic.isNotEmpty) return arabic.first.localeId;
-    } catch (_) {}
-    return null;
+      if (event == 'SANAD_ERROR') {
+        if (mounted) setState(() => _message = result['message']?.toString() ?? 'Tajweed server error.');
+      }
+    });
+    return true;
   }
 
-  Future<bool> _startOnlineSpeech() async {
-    final available = await _speech.initialize(
-      onStatus: (status) {
-        if ((status == 'done' || status == 'notListening') &&
-            _isListening &&
-            _usingOnlineSpeech &&
-            !_finishing) {
-          _finishListening();
+  void _applyQrcResult(Map<String, dynamic> result, {required bool persist}) {
+    final ayah = _currentAyah;
+    if (ayah == null) return;
+    if (result['event'] == 'SANAD_ERROR') {
+      if (mounted) setState(() => _message = result['message']?.toString() ?? 'Tajweed server error.');
+      return;
+    }
+
+    final expectedWords = _splitWords(ayah.arabic);
+    final current = _results.length == expectedWords.length
+        ? List<_WordResult>.from(_results)
+        : expectedWords.map((w) => _WordResult(w, _WordStatus.pending)).toList();
+
+    final wordScores = result['word_scores'];
+    if (wordScores is List) {
+      for (final raw in wordScores) {
+        if (raw is! Map) continue;
+        final start = int.tryParse(raw['start_idx']?.toString() ?? '');
+        final end = int.tryParse(raw['end_idx']?.toString() ?? '');
+        final word = raw['word']?.toString() ?? '';
+        final verdict = raw['verdict']?.toString() ?? '';
+        var index = -1;
+        if (start != null && end != null) {
+          final expected = expectedWords;
+          var cursor = 0;
+          for (var i = 0; i < expected.length; i++) {
+            final next = cursor + expected[i].length;
+            if (start >= cursor && start < next) { index = i; break; }
+            cursor = next + 1;
+          }
         }
-      },
-      onError: (error) {
-        if (!mounted) return;
-        if (_isListening && _usingOnlineSpeech) {
-          setState(() {
-            _message = 'Online voice recognition ruk gayi. Dobara parhein.';
-          });
+        if (index < 0 && word.isNotEmpty) {
+          index = expectedWords.indexWhere((w) => _normalizeArabic(w) == _normalizeArabic(word));
         }
-      },
+        if (index < 0 || index >= current.length) continue;
+        final status = switch (verdict) {
+          'green' => _WordStatus.correct,
+          'yellow' => _WordStatus.improve,
+          'red' => _WordStatus.wrong,
+          _ => current[index].status,
+        };
+        current[index] = _WordResult(expectedWords[index], status);
+      }
+    } else {
+      // Backward-compatible mapping for an older QRC response, if encountered.
+      final correct = <String>{};
+      final skipped = <String>{};
+      final tajweed = <String>{};
+      for (final item in (result['correct_words'] as List? ?? const [])) {
+        if (item is Map) correct.add('${item['chapter']}:${item['verse']}:${item['word']}');
+      }
+      for (final item in (result['skipped_words'] as List? ?? const [])) {
+        if (item is Map) skipped.add('${item['chapter']}:${item['verse']}:${item['word']}');
+      }
+      for (final item in (result['tajweed_mistakes'] as List? ?? const [])) {
+        if (item is Map) tajweed.add('${item['chapter']}:${item['verse']}:${item['word']}');
+      }
+      for (var i = 0; i < expectedWords.length; i++) {
+        final k = '${widget.selectedSurah.number}:${ayah.numberInSurah}:${i + 1}';
+        if (skipped.contains(k)) current[i] = _WordResult(expectedWords[i], _WordStatus.wrong);
+        else if (tajweed.contains(k)) current[i] = _WordResult(expectedWords[i], _WordStatus.improve);
+        else if (correct.contains(k)) current[i] = _WordResult(expectedWords[i], _WordStatus.correct);
+      }
+    }
+
+    final contentStatus = result['content_status']?.toString();
+    if (contentStatus == 'content_mismatch') {
+      if (mounted) setState(() => _message = 'Recitation ayat se match nahi hui. Tajweed score nahi diya gaya.');
+      return;
+    }
+
+    final correctCount = current.where((x) => x.status == _WordStatus.correct).length;
+    final improveCount = current.where((x) => x.status == _WordStatus.improve).length;
+    final wrongCount = current.where((x) => x.status == _WordStatus.wrong).length;
+    if (!mounted) return;
+    setState(() {
+      _results = List.unmodifiable(current);
+      _isEvaluated = current.any((x) => x.status != _WordStatus.pending);
+      _message = 'Online Tajweed: $correctCount sahi, $improveCount Tajweed review, $wrongCount dobara.';
+    });
+    _scheduleLiveHistorySave(current);
+    if (persist) _saveCurrentResults(current);
+  }
+
+  Future<void> _saveCurrentResults(List<_WordResult> results) async {
+    final ayah = _currentAyah;
+    if (ayah == null) return;
+    final correct = results.where((x) => x.status == _WordStatus.correct).length;
+    final wrong = results.where((x) => x.status != _WordStatus.correct).length;
+    await StorageService.saveOrUpdateQuranHistory(
+      surahNumber: widget.selectedSurah.number,
+      surahName: widget.selectedSurah.transliteration,
+      ayahNumber: ayah.numberInSurah,
+      correctWords: correct,
+      wrongWords: wrong,
+      wordStatuses: results.map((x) => {'word': x.word, 'status': x.status.name}).toList(growable: false),
     );
+  }
 
-    if (!available) return false;
-
-    final localeId = await _bestArabicLocale();
-    if (localeId == null) return false;
-
-    _usingOnlineSpeech = true;
-    _onlineSpeechText = '';
-    _spokenText = '';
-
-    await _speech.listen(
-      localeId: localeId,
-      partialResults: true,
-      listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 5),
-      cancelOnError: false,
-      onResult: (result) {
-        if (!mounted || !_isListening && !_usingOnlineSpeech) return;
-        setState(() {
-          _onlineSpeechText = result.recognizedWords.trim();
-          _spokenText = _onlineSpeechText;
-        });
-      },
-    );
-
-    return true;
+  int _globalWordOffsetForAyah(int ayahIndex) {
+    var offset = 0;
+    for (var i = 0; i < ayahIndex && i < _ayahs.length; i++) {
+      offset += _splitWords(_ayahs[i].arabic).length;
+    }
+    return offset;
   }
 
   Future<void> _startListening() async {
@@ -359,13 +435,12 @@ class _RecitationScreenState extends State<RecitationScreen> {
 
     _sessionToken = DateTime.now().microsecondsSinceEpoch;
     _savedSessionToken = null;
-    _usingOfflineAsr = false;
-    _usingOnlineSpeech = false;
-    _onlineSpeechText = '';
     _spokenText = '';
 
-    // After an ayah has been checked, retry only the words that were not
-    // correct. This avoids forcing the user to repeat the whole ayah.
+    // IMPORTANT: starting the microphone must never reset an already-evaluated ayah.
+    // Existing word statuses are preserved and only the words returned by the
+    // online engine are updated.
+    final previousResults = List<_WordResult>.from(_results);
     final fullWords = _splitWords(ayah.arabic);
     final retryIndexes = _results.length == fullWords.length
         ? List<int>.generate(fullWords.length, (i) => i)
@@ -378,87 +453,72 @@ class _RecitationScreenState extends State<RecitationScreen> {
         ? retryIndexes.map((i) => fullWords[i]).join(' ')
         : ayah.arabic;
 
-    // Prefer the phone's online speech recognizer first. This gives immediate
-    // feedback after recording and does not require a 150 MB model download.
+    // Online Tajweed is now the ONLY recitation-analysis path.
+    // No offline ASR/Tajweed fallback is used, because it can produce weaker
+    // Tajweed judgments and inconsistent word coloring.
     try {
-      _isListening = true;
-      final onlineStarted = await _startOnlineSpeech();
-      if (onlineStarted) {
-        if (!mounted) return;
+      if (mounted) {
         setState(() {
           _isListening = true;
           _isEvaluated = false;
-          _results = const [];
+          _results = List.unmodifiable(previousResults);
           _message = _retryMode
-              ? 'Dobara sirf red/orange lafz parhein: $targetWords'
-              : 'Online AI Listening... poori ayat mukammal parhein.';
+              ? 'Online Tajweed AI — sirf red/orange lafz parhein: $targetWords'
+              : 'Online Tajweed AI connect ho raha hai...';
         });
-        return;
       }
-    } catch (_) {
-      _usingOnlineSpeech = false;
-    }
 
-    // If the phone has no online speech service, use the Quran-optimized
-    // offline Whisper model as the fallback.
-    if (!kIsWeb) {
-      try {
-        var ready = await OfflineAsrService.isModelReady();
-        if (!ready) {
-          if (mounted) {
-            setState(() {
-              _modelPreparing = true;
-              _firstModelDownload = true;
-              _modelProgress = 0;
-              _message = 'Pehli dafa Quran Voice AI download ho raha hai...';
-            });
-          }
-          await OfflineAsrService.downloadModel(onProgress: (value) {
-            if (mounted) {
-              setState(() => _modelProgress = value.clamp(0.0, 1.0));
-            }
-          });
-          ready = await OfflineAsrService.isModelReady();
-        }
-        if (!ready) throw StateError('AI voice model is not ready.');
-
-        await OfflineAsrService.startRecording();
-        if (!mounted) return;
-        setState(() {
-          _usingOfflineAsr = true;
-          _modelPreparing = false;
-          _firstModelDownload = false;
-          _isListening = true;
-          _isEvaluated = false;
-          _spokenText = '';
-          _results = const [];
-          _message = _retryMode
-              ? 'Dobara sirf red/orange lafz parhein: $targetWords'
-              : 'Offline AI Listening... poori ayat mukammal parhein.';
-        });
-        return;
-      } catch (e) {
+      final started = await _startOnlineQrc(ayah);
+      if (!started) {
         if (mounted) {
           setState(() {
-            _modelPreparing = false;
-            _firstModelDownload = false;
-            _message = 'Voice recognition start nahi hui: $e';
+            _isListening = false;
+            _message = 'Online Tajweed ke liye internet aur API access zaroori hai.';
           });
         }
+      } else if (mounted) {
+        setState(() {
+          _message = _retryMode
+              ? 'Online Tajweed AI — sirf red/orange lafz parhein.'
+              : 'Online Tajweed AI Listening...';
+        });
+      }
+    } catch (e) {
+      _usingOnlineQrc = false;
+      _isListening = false;
+      if (mounted) {
+        setState(() {
+          _message = 'Online Tajweed service start nahi hui. Internet/API key check karein.';
+        });
       }
     }
+  }
 
-    if (mounted) {
-      setState(() {
-        _isListening = false;
-        _message = 'Arabic speech recognition is device par available nahi hai.';
-      });
-    }
+  void _scheduleLiveHistorySave(List<_WordResult> results) {
+    _liveHistoryTimer?.cancel();
+    final generation = ++_liveHistoryGeneration;
+    final snapshot = List<_WordResult>.unmodifiable(results);
+    _liveHistoryTimer = Timer(const Duration(milliseconds: 650), () async {
+      if (!mounted || generation != _liveHistoryGeneration) return;
+      final ayah = _currentAyah;
+      if (ayah == null || snapshot.isEmpty) return;
+      final correct = snapshot.where((x) => x.status == _WordStatus.correct).length;
+      final wrong = snapshot.where((x) => x.status != _WordStatus.correct).length;
+      await StorageService.saveOrUpdateQuranHistory(
+        surahNumber: widget.selectedSurah.number,
+        surahName: widget.selectedSurah.transliteration,
+        ayahNumber: ayah.numberInSurah,
+        correctWords: correct,
+        wrongWords: wrong,
+        wordStatuses: snapshot.map((x) => {'word': x.word, 'status': x.status.name}).toList(growable: false),
+      );
+    });
   }
 
   Future<void> _finishListening() async {
     if (!_isListening || _finishing) return;
     _finishing = true;
+    _sessionToken++; // invalidate late speech callbacks immediately
     if (mounted) {
       setState(() {
         _isListening = false;
@@ -467,15 +527,18 @@ class _RecitationScreenState extends State<RecitationScreen> {
     }
 
     try {
-      if (_usingOnlineSpeech) {
-        await _speech.stop();
-        _spokenText = _onlineSpeechText.trim();
-      } else if (_usingOfflineAsr) {
-        final recognized = await OfflineAsrService.stopAndRecognize()
-            .timeout(const Duration(seconds: 45));
-        _spokenText = recognized.trim();
-      } else {
-        await _speech.stop();
+      if (_usingOnlineQrc) {
+        final finalResult = await _qrcService?.stop();
+        if (finalResult != null) {
+          _latestQrcResult = finalResult;
+          _applyQrcResult(finalResult, persist: true);
+        } else if (_latestQrcResult != null) {
+          _applyQrcResult(_latestQrcResult!, persist: true);
+        }
+        _spokenText = _spokenText.trim();
+        // QRC is authoritative for online sessions; do not run the old
+        // local text aligner afterwards and overwrite Tajweed results.
+        return;
       }
 
       final text = _spokenText.trim();
@@ -503,8 +566,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
         setState(() => _message = 'Voice analysis mein error: $e');
       }
     } finally {
-      _usingOnlineSpeech = false;
-      _usingOfflineAsr = false;
+      _usingOnlineQrc = false;
+      _qrcService = null;
       _finishing = false;
     }
   }
@@ -841,12 +904,12 @@ class _RecitationScreenState extends State<RecitationScreen> {
     int delta,
   ) async {
     if (_isListening) {
-      if (_usingOfflineAsr) {
-        await OfflineAsrService.cancelRecording();
-        _usingOfflineAsr = false;
-      } else {
-        await _speech.stop();
+      if (_usingOnlineQrc) {
+        await _qrcService?.stop();
       }
+      _isListening = false;
+      _usingOnlineQrc = false;
+      _qrcService = null;
     }
 
     await QuranAudioService.stop();
@@ -877,6 +940,7 @@ class _RecitationScreenState extends State<RecitationScreen> {
 
     await _refreshAudioState();
     await _restoreSavedAyahFeedback();
+
   }
 
   @override
@@ -1042,8 +1106,8 @@ class _RecitationScreenState extends State<RecitationScreen> {
                         ),
                         Expanded(
                           child: SingleChildScrollView(
-                            physics: constraints.maxHeight < 680 ? const ClampingScrollPhysics() : const BouncingScrollPhysics(),
-                            padding: EdgeInsets.fromLTRB(18, 2, 18, constraints.maxHeight < 680 ? 10 : 24),
+                            physics: constraints.maxHeight < 680 ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(18, 2, 18, constraints.maxHeight < 680 ? 6 : 24),
                             child: Column(
                               children: [
                                 if (_modelPreparing) _buildModelProgressCard(),

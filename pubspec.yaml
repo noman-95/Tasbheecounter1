@@ -2,7 +2,7 @@ name: tasbheecounter
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+9
 
 environment:
   sdk: ^3.13.3
@@ -15,11 +15,11 @@ dependencies:
   http: ^1.6.0
   archive: ^4.3.0
   record: ^6.2.0
-  sherpa_onnx: ^1.13.8
   vibration: ^3.2.1
-  speech_to_text: ^7.5.0
   just_audio: ^0.10.6
   path_provider: ^2.1.6
+  messagepack: ^0.2.1
+  recite_quran: ^1.0.3
 
 dev_dependencies:
   flutter_test:

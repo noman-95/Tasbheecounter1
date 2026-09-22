@@ -223,7 +223,7 @@ class OfflineAsrService {
         ),
         tokens: '${modelDir.path}/base-tokens.txt',
         modelType: 'whisper',
-        numThreads: 2,
+        numThreads: 4,
         provider: 'cpu',
       ),
       decodingMethod: 'greedy_search',

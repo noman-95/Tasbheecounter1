@@ -478,21 +478,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            16,
-            18,
-            16,
-            25,
-          ),
-          child: Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxHeight < 720;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, compact ? 10 : 18, 16, compact ? 8 : 18),
+              child: Column(
             children: [
               // ==============================
               // QURAN LEARNING CARD
               // ==============================
               _buildQuranCard(isDark),
 
-              const SizedBox(height: 22),
+              SizedBox(height: compact ? 10 : 22),
 
               // ==============================
               // ZIKR CARD
@@ -529,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       textAlign: TextAlign.center,
                       textDirection: TextDirection.rtl,
                       style: TextStyle(
-                        fontSize: 31,
+                        fontSize: compact ? 25 : 31,
                         height: 1.7,
                         fontWeight: FontWeight.bold,
                         color: isDark
@@ -572,8 +570,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             textDirection:
                                 TextDirection.rtl,
                             style: TextStyle(
-                              fontSize: 19,
-                              height: 1.7,
+                              fontSize: compact ? 16 : 19,
+                              height: compact ? 1.35 : 1.7,
                               fontWeight:
                                   FontWeight.w500,
                               color: isDark
@@ -599,7 +597,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              const SizedBox(height: 22),
+              SizedBox(height: compact ? 10 : 22),
 
               // ==============================
               // COUNTER
@@ -849,7 +847,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              const SizedBox(height: 18),
+              SizedBox(height: compact ? 10 : 18),
 
               Container(
                 width: double.infinity,

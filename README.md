@@ -1,39 +1,22 @@
-# Tasbheecounter
+# Quran Recitation — V9 Self-Hosted Online Tajweed
 
-The existing Zikr/Tasbih screens and storage are kept from the previous working project.
+This build removes the paid QRC API requirement. Recitation analysis is sent to a **self-hosted Sanad** backend; no API key is embedded in the APK.
 
-Added Quran features:
-- Quran Learning screen with 114 Surahs.
-- Arabic Quran text from the bundled Tanzil SQL asset.
-- Urdu translation from the bundled Urdu JSON asset.
-- Ayah-by-ayah Quran reading screen.
-- AI Recitation Check using the microphone.
-- Recitation is evaluated after the whole ayah/session ends, not word-by-word during live speaking.
-- Correct words are shown in green and wrong words in red.
-- Left button = Next; right button = Previous.
-
-Before running:
+## App
 
 ```bash
-flutter clean
 flutter pub get
-flutter run -d chrome
+flutter build apk --release --dart-define=SANAD_BASE_URL=http://YOUR_PC_LAN_IP:8000
 ```
 
-For Android release:
+For Android emulator the default is `http://10.0.2.2:8000`.
 
-```bash
-flutter build apk --release
-```
+## Backend
 
-Offline Quran Audio:
-- Surah screen has an "Offline Surah Audio" download button.
-- Recitation screen has "Sunain" and "Offline Save" controls.
-- Audio is downloaded per ayah and stored inside the app; downloaded ayahs can then be played without internet.
-- The first download requires internet.
-- Recite & Check remains separate: playing the Qari audio is optional, and feedback still runs after the full ayah is recited.
-- Chrome/web can stream the reference audio but cannot use the local offline download cache.
+See `server_setup/README.md` and run `server_setup/setup_sanad_windows.ps1` on the computer that will host the Tajweed engine.
 
-Important offline note:
-- Offline Qari audio is supported after the ayah/surah audio has been downloaded once.
-- The current `speech_to_text` feedback engine uses the device speech-recognition service, so its ability to work with no internet depends on the installed Arabic speech service/language pack. The app does not claim guaranteed fully-offline AI speech grading yet.
+The mobile app requires internet/Wi-Fi access to that server for recitation analysis. Quran/history remain local.
+
+## Scope
+
+Sanad is open-source AGPL-3.0. Its current published engine measures **madd duration and ghunnah/nasality**, plus word/content scoring. It is not a complete real-time 11-rule Tajweed judge and its authors document CPU inference taking seconds per ayah and limited validation. Treat feedback as assistive practice, not a scholarly ruling.
