@@ -336,6 +336,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.13.0"
+  messagepack:
+    dependency: "direct main"
+    description:
+      name: messagepack
+      sha256: "11e69dd79ba84ba901261558881b42ac8b24155a7846a344875a32c8b0866d71"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   meta:
     dependency: transitive
     description:
@@ -448,54 +456,62 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.1"
+  recite_quran:
+    dependency: "direct main"
+    description:
+      name: recite_quran
+      sha256: "7606d5bd27adb57e4ccb5669f352e63033ee07a5bd394f15b4823bf051fa5d24"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   record:
     dependency: "direct main"
     description:
       name: record
-      sha256: "10911465138fafacef459a780564e883e01bd48eabf87ab20543684884492870"
+      sha256: "82539d1372e23cf51375fdfcba084f39912bcbf9a953b75d56596691f8f11c0f"
       url: "https://pub.dev"
     source: hosted
-    version: "6.2.1"
+    version: "7.1.1"
   record_android:
     dependency: transitive
     description:
       name: record_android
-      sha256: eb1732e42d0d2a1895b8db86e4fc917287e6d8491b6ed59918aea8bed6c69de4
+      sha256: f5080279259c4ad769590f1c165762eaa4e414178adc2e2fab137103228e07ac
       url: "https://pub.dev"
     source: hosted
-    version: "1.5.2"
+    version: "2.2.0"
   record_ios:
     dependency: transitive
     description:
       name: record_ios
-      sha256: c051fb48edd7a0e265daafb9108730dc827c27b551728a3fdfb3ef69efd89c73
+      sha256: "21d189f49a598af4697dac4cc9e48389ac0a1fb3e916622b5504a58d9b96313e"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.1"
+    version: "2.1.1"
   record_linux:
     dependency: transitive
     description:
       name: record_linux
-      sha256: "31181787bf7eccb0e298835836b69b3cd0a903863b75d70e937de3dec71cd8f3"
+      sha256: "766b3ebad3a318a42e06a5924f7eaf4d7e792f9b152d1d749f5b12c2a64bcef5"
       url: "https://pub.dev"
     source: hosted
-    version: "1.3.1"
+    version: "2.1.2"
   record_macos:
     dependency: transitive
     description:
       name: record_macos
-      sha256: cfe1b61435e27db418bf513dc36820d10c9f7eb1843786c2c9a52e07e2f4f627
+      sha256: ced7495abf3d683e8a7dbe8fc96df8ea5722837a26f922b7cb7c5de11661bb46
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.2"
+    version: "2.1.1"
   record_platform_interface:
     dependency: transitive
     description:
       name: record_platform_interface
-      sha256: "8e56cbe06c6984137fb86132ff03459f29938d927496d9b2d0962e2d6345d488"
+      sha256: d94b37cadb8fe203e64b0e9893271c0b71b34f2550ee7fb0c6105d650e00c1f5
       url: "https://pub.dev"
     source: hosted
-    version: "1.6.0"
+    version: "2.1.0"
   record_use:
     dependency: transitive
     description:
@@ -508,18 +524,18 @@ packages:
     dependency: transitive
     description:
       name: record_web
-      sha256: "7e9846981c1f2d111d86f0ae3309071f5bba8b624d1c977316706f08fc31d16d"
+      sha256: "7f6950be87abacb05cf77eb6ca200b60f2c2a6af5d50236b5f4baf53f92e755e"
       url: "https://pub.dev"
     source: hosted
-    version: "1.3.0"
+    version: "2.1.3"
   record_windows:
     dependency: transitive
     description:
       name: record_windows
-      sha256: "223258060a1d25c62bae18282c16783f28581ec19401d17e56b5205b9f039d78"
+      sha256: "8195489a47b5e8246985d6213ff65aae1b14e32a0ca45dc5f680e8d503296e1b"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.7"
+    version: "2.3.0"
   rxdart:
     dependency: transitive
     description:
@@ -585,7 +601,7 @@ packages:
     source: hosted
     version: "2.4.1"
   sherpa_onnx:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: sherpa_onnx
       sha256: b7e65d5956f8c9213fd339c68ea058cdec7ad24bd35f9bfc5c18178d3d73b2f9
@@ -677,30 +693,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
-  speech_to_text:
-    dependency: "direct main"
-    description:
-      name: speech_to_text
-      sha256: f2fabd017b5cb07f4e06d496b2d4b957e39534bc848f92b1e6acac80a10f4967
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.5.0"
-  speech_to_text_platform_interface:
-    dependency: transitive
-    description:
-      name: speech_to_text_platform_interface
-      sha256: "7e447356be3074c471223c9d179ef3f822475350b67ca923ec71ab3bf2ede214"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.5.0"
-  speech_to_text_windows:
-    dependency: transitive
-    description:
-      name: speech_to_text_windows
-      sha256: "2d1d10565b23262386b453b33656299608dc7a66784453735d6c1318f13f44d7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.1"
   stack_trace:
     dependency: transitive
     description:
